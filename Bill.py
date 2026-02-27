@@ -6,12 +6,13 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, Tabl
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.units import inch
+from io import BytesIO
 
 st.set_page_config(layout="wide")
 st.title("Professional Billing System")
 
 # =========================
-# SAFE SESSION INIT
+# SESSION INIT
 # =========================
 if "invoice_items" not in st.session_state:
     st.session_state["invoice_items"] = []
@@ -133,7 +134,6 @@ items = st.session_state.get("invoice_items", [])
 if isinstance(items, list) and len(items) > 0:
 
     df = pd.DataFrame(items)
-
     subtotal = df["Total"].sum()
     cgst = subtotal * 0.09
     sgst = subtotal * 0.09
@@ -147,62 +147,12 @@ if isinstance(items, list) and len(items) > 0:
     st.write(f"Final Total: ₹ {total:.2f}")
 
     # =========================
-    # SAVE INVOICE
-    # =========================
-    if st.button("Save Invoice"):
-
-        if not customer_name.strip():
-            st.error("Customer name required")
-        else:
-            conn = get_connection()
-            c = conn.cursor()
-
-            try:
-                c.execute("""
-                INSERT INTO invoices
-                (invoice_no, customer_name, phone, address, date, subtotal, cgst, sgst, total)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    st.session_state["invoice_no"],
-                    customer_name,
-                    phone,
-                    address,
-                    str(invoice_date),
-                    subtotal,
-                    cgst,
-                    sgst,
-                    total
-                ))
-
-                for item in items:
-                    c.execute("""
-                    INSERT INTO invoice_items
-                    (invoice_no, product, quantity, rate, total)
-                    VALUES (?, ?, ?, ?, ?)
-                    """, (
-                        st.session_state["invoice_no"],
-                        item["Product"],
-                        item["Quantity"],
-                        item["Rate"],
-                        item["Total"]
-                    ))
-
-                conn.commit()
-                st.success("Invoice Saved Successfully")
-
-            except Exception as e:
-                st.error(f"Database Error: {e}")
-
-            finally:
-                conn.close()
-
-    # =========================
-    # GENERATE PDF
+    # GENERATE PDF (IN MEMORY)
     # =========================
     if st.button("Generate PDF"):
 
-        file_name = f"{st.session_state['invoice_no']}.pdf"
-        doc = SimpleDocTemplate(file_name)
+        buffer = BytesIO()
+        doc = SimpleDocTemplate(buffer)
         elements = []
 
         styles = getSampleStyleSheet()
@@ -238,33 +188,19 @@ if isinstance(items, list) and len(items) > 0:
         elements.append(table)
         doc.build(elements)
 
-        with open(file_name, "rb") as f:
-            st.download_button(
-                "Download Invoice",
-                f,
-                file_name=file_name,
-                mime="application/pdf"
-            )
+        buffer.seek(0)
+
+        st.download_button(
+            label="Download Invoice PDF",
+            data=buffer,
+            file_name=f"{st.session_state['invoice_no']}.pdf",
+            mime="application/pdf"
+        )
 
 # =========================
-# CLEAR BUTTON
+# CLEAR
 # =========================
 if st.button("Clear Invoice"):
     st.session_state["invoice_items"] = []
     st.session_state["invoice_no"] = generate_invoice_number()
     st.rerun()
-
-# =========================
-# INVOICE HISTORY
-# =========================
-st.markdown("---")
-st.subheader("Invoice History")
-
-conn = get_connection()
-history = pd.read_sql_query("SELECT * FROM invoices ORDER BY id DESC", conn)
-conn.close()
-
-if not history.empty:
-    st.dataframe(history)
-else:
-    st.info("No invoices found")
