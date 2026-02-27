@@ -4,63 +4,74 @@ import sqlite3
 from datetime import datetime
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 from reportlab.lib import colors
-from reportlab.lib.styles import ParagraphStyle
-from reportlab.lib import styles
+from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.units import inch
-from reportlab.pdfbase.ttfonts import TTFont
-from reportlab.pdfbase import pdfmetrics
 import os
 
 st.set_page_config(layout="wide")
 st.title("Professional Billing System")
 
-# =========================
-# DATABASE SETUP
-# =========================
-conn = sqlite3.connect("database.db", check_same_thread=False)
-c = conn.cursor()
+# ==============================
+# DATABASE INITIALIZATION
+# ==============================
+DB_FILE = "database.db"
 
-c.execute("""
-CREATE TABLE IF NOT EXISTS invoices (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    invoice_no TEXT,
-    customer_name TEXT,
-    phone TEXT,
-    address TEXT,
-    date TEXT,
-    subtotal REAL,
-    cgst REAL,
-    sgst REAL,
-    total REAL
-)
-""")
+def get_connection():
+    return sqlite3.connect(DB_FILE, check_same_thread=False)
 
-c.execute("""
-CREATE TABLE IF NOT EXISTS invoice_items (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    invoice_no TEXT,
-    product TEXT,
-    quantity INTEGER,
-    rate REAL,
-    total REAL
-)
-""")
-conn.commit()
+def init_db():
+    conn = get_connection()
+    c = conn.cursor()
 
-# =========================
-# INVOICE NUMBER
-# =========================
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS invoices (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        invoice_no TEXT UNIQUE,
+        customer_name TEXT,
+        phone TEXT,
+        address TEXT,
+        date TEXT,
+        subtotal REAL,
+        cgst REAL,
+        sgst REAL,
+        total REAL
+    )
+    """)
+
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS invoice_items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        invoice_no TEXT,
+        product TEXT,
+        quantity INTEGER,
+        rate REAL,
+        total REAL
+    )
+    """)
+
+    conn.commit()
+    conn.close()
+
+init_db()
+
+# ==============================
+# INVOICE NUMBER GENERATOR
+# ==============================
 def generate_invoice_number():
+    conn = get_connection()
+    c = conn.cursor()
+
     today = datetime.today()
     year = today.year
     if today.month < 4:
         fy = f"{year-1}-{str(year)[-2:]}"
     else:
         fy = f"{year}-{str(year+1)[-2:]}"
-    
+
     c.execute("SELECT COUNT(*) FROM invoices")
     serial = c.fetchone()[0] + 1
-    
+    conn.close()
+
     return f"INV/{fy}/{serial:04d}"
 
 if "items" not in st.session_state:
@@ -69,9 +80,9 @@ if "items" not in st.session_state:
 if "invoice_no" not in st.session_state:
     st.session_state.invoice_no = generate_invoice_number()
 
-# =========================
+# ==============================
 # CUSTOMER DETAILS
-# =========================
+# ==============================
 st.subheader("Customer Details")
 
 col1, col2 = st.columns(2)
@@ -84,9 +95,9 @@ with col2:
     address = st.text_area("Address")
     invoice_date = st.date_input("Invoice Date", datetime.today())
 
-# =========================
+# ==============================
 # ADD ITEM
-# =========================
+# ==============================
 st.subheader("Add Item")
 
 col1, col2, col3 = st.columns(3)
@@ -109,9 +120,9 @@ if st.button("Add Item"):
             "Total": qty * rate
         })
 
-# =========================
+# ==============================
 # DISPLAY ITEMS
-# =========================
+# ==============================
 if st.session_state.items:
 
     df = pd.DataFrame(st.session_state.items)
@@ -123,64 +134,73 @@ if st.session_state.items:
     st.dataframe(df)
 
     st.write(f"Subtotal: ₹ {subtotal:.2f}")
-    st.write(f"CGST: ₹ {cgst:.2f}")
-    st.write(f"SGST: ₹ {sgst:.2f}")
+    st.write(f"CGST (9%): ₹ {cgst:.2f}")
+    st.write(f"SGST (9%): ₹ {sgst:.2f}")
     st.write(f"Final Total: ₹ {total:.2f}")
 
-    # =========================
-    # SAVE INVOICE
-    # =========================
+    # ==============================
+    # SAVE INVOICE TO DB
+    # ==============================
     if st.button("Save Invoice"):
 
         if not customer_name.strip():
-            st.error("Customer Name Required")
+            st.error("Customer name required")
         else:
-            c.execute("""
-            INSERT INTO invoices 
-            (invoice_no, customer_name, phone, address, date, subtotal, cgst, sgst, total)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                st.session_state.invoice_no,
-                customer_name,
-                phone,
-                address,
-                str(invoice_date),
-                subtotal,
-                cgst,
-                sgst,
-                total
-            ))
+            conn = get_connection()
+            c = conn.cursor()
 
-            for item in st.session_state.items:
+            try:
                 c.execute("""
-                INSERT INTO invoice_items
-                (invoice_no, product, quantity, rate, total)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO invoices
+                (invoice_no, customer_name, phone, address, date, subtotal, cgst, sgst, total)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     st.session_state.invoice_no,
-                    item["Product"],
-                    item["Quantity"],
-                    item["Rate"],
-                    item["Total"]
+                    customer_name,
+                    phone,
+                    address,
+                    str(invoice_date),
+                    subtotal,
+                    cgst,
+                    sgst,
+                    total
                 ))
 
-            conn.commit()
-            st.success("Invoice Saved Successfully")
+                for item in st.session_state.items:
+                    c.execute("""
+                    INSERT INTO invoice_items
+                    (invoice_no, product, quantity, rate, total)
+                    VALUES (?, ?, ?, ?, ?)
+                    """, (
+                        st.session_state.invoice_no,
+                        item["Product"],
+                        item["Quantity"],
+                        item["Rate"],
+                        item["Total"]
+                    ))
 
-    # =========================
-    # GENERATE PDF
-    # =========================
+                conn.commit()
+                st.success("Invoice Saved Successfully")
+            except Exception as e:
+                st.error(f"Database Error: {e}")
+            finally:
+                conn.close()
+
+    # ==============================
+    # GENERATE PDF (CLOUD SAFE)
+    # ==============================
     if st.button("Generate PDF"):
 
         file_name = f"{st.session_state.invoice_no}.pdf"
         doc = SimpleDocTemplate(file_name)
         elements = []
 
-        style = styles.getSampleStyleSheet()
-        elements.append(Paragraph(f"Invoice No: {st.session_state.invoice_no}", style["Heading2"]))
-        elements.append(Paragraph(f"Customer: {customer_name}", style["Normal"]))
-        elements.append(Paragraph(f"Phone: {phone}", style["Normal"]))
-        elements.append(Paragraph(f"Date: {invoice_date}", style["Normal"]))
+        styles = getSampleStyleSheet()
+
+        elements.append(Paragraph(f"Invoice No: {st.session_state.invoice_no}", styles["Heading2"]))
+        elements.append(Paragraph(f"Customer: {customer_name}", styles["Normal"]))
+        elements.append(Paragraph(f"Phone: {phone}", styles["Normal"]))
+        elements.append(Paragraph(f"Date: {invoice_date}", styles["Normal"]))
         elements.append(Spacer(1, 0.3 * inch))
 
         table_data = [["Product", "Qty", "Rate", "Total"]]
@@ -221,19 +241,17 @@ if st.session_state.items:
         st.session_state.invoice_no = generate_invoice_number()
         st.rerun()
 
-# =========================
+# ==============================
 # INVOICE HISTORY
-# =========================
+# ==============================
 st.markdown("---")
 st.subheader("Invoice History")
 
-c.execute("SELECT * FROM invoices ORDER BY id DESC")
-rows = c.fetchall()
+conn = get_connection()
+history = pd.read_sql_query("SELECT * FROM invoices ORDER BY id DESC", conn)
+conn.close()
 
-if rows:
-    history_df = pd.DataFrame(rows, columns=[
-        "ID", "Invoice No", "Customer", "Phone",
-        "Address", "Date", "Subtotal", "CGST",
-        "SGST", "Total"
-    ])
-    st.dataframe(history_df)
+if not history.empty:
+    st.dataframe(history)
+else:
+    st.info("No invoices found")
