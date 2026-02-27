@@ -267,6 +267,9 @@ if st.button("Clear Invoice"):
 # ==============================
 # INVOICE HISTORY + VIEW
 # ==============================
+# ==============================
+# INVOICE HISTORY + VIEW + DELETE
+# ==============================
 st.markdown("---")
 st.subheader("Invoice History")
 
@@ -278,13 +281,14 @@ if not history.empty:
 
     for index, row in history.iterrows():
 
-        col1, col2, col3, col4, col5 = st.columns([2,2,2,2,1])
+        col1, col2, col3, col4, col5, col6 = st.columns([2,2,2,2,1,1])
 
         col1.write(row["invoice_no"])
         col2.write(row["customer_name"])
         col3.write(row["date"])
         col4.write(f"₹ {row['total']:.2f}")
 
+        # ================= VIEW BUTTON =================
         if col5.button("View", key=f"view_{row['invoice_no']}"):
 
             conn = get_connection()
@@ -337,6 +341,24 @@ if not history.empty:
                 file_name=f"{row['invoice_no']}.pdf",
                 mime="application/pdf"
             )
+
+        # ================= DELETE BUTTON =================
+        if col6.button("Delete", key=f"delete_invoice_{row['invoice_no']}"):
+
+            conn = get_connection()
+            c = conn.cursor()
+
+            # Delete child records first
+            c.execute("DELETE FROM invoice_items WHERE invoice_no=?", (row["invoice_no"],))
+
+            # Delete parent record
+            c.execute("DELETE FROM invoices WHERE invoice_no=?", (row["invoice_no"],))
+
+            conn.commit()
+            conn.close()
+
+            st.success("Invoice Deleted Successfully")
+            st.rerun()
 
 else:
     st.info("No invoices found")
