@@ -6,14 +6,22 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, Tabl
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.units import inch
-import os
 
 st.set_page_config(layout="wide")
 st.title("Professional Billing System")
 
-# ==============================
-# DATABASE INITIALIZATION
-# ==============================
+# =========================
+# SAFE SESSION INIT
+# =========================
+if "invoice_items" not in st.session_state:
+    st.session_state["invoice_items"] = []
+
+if "invoice_no" not in st.session_state:
+    st.session_state["invoice_no"] = None
+
+# =========================
+# DATABASE
+# =========================
 DB_FILE = "database.db"
 
 def get_connection():
@@ -54,9 +62,9 @@ def init_db():
 
 init_db()
 
-# ==============================
-# INVOICE NUMBER GENERATOR
-# ==============================
+# =========================
+# INVOICE NUMBER
+# =========================
 def generate_invoice_number():
     conn = get_connection()
     c = conn.cursor()
@@ -74,15 +82,12 @@ def generate_invoice_number():
 
     return f"INV/{fy}/{serial:04d}"
 
-if "items" not in st.session_state:
-    st.session_state.items = []
+if st.session_state["invoice_no"] is None:
+    st.session_state["invoice_no"] = generate_invoice_number()
 
-if "invoice_no" not in st.session_state:
-    st.session_state.invoice_no = generate_invoice_number()
-
-# ==============================
+# =========================
 # CUSTOMER DETAILS
-# ==============================
+# =========================
 st.subheader("Customer Details")
 
 col1, col2 = st.columns(2)
@@ -95,9 +100,9 @@ with col2:
     address = st.text_area("Address")
     invoice_date = st.date_input("Invoice Date", datetime.today())
 
-# ==============================
+# =========================
 # ADD ITEM
-# ==============================
+# =========================
 st.subheader("Add Item")
 
 col1, col2, col3 = st.columns(3)
@@ -113,19 +118,22 @@ with col3:
 
 if st.button("Add Item"):
     if product.strip():
-        st.session_state.items.append({
+        st.session_state["invoice_items"].append({
             "Product": product,
             "Quantity": qty,
             "Rate": rate,
             "Total": qty * rate
         })
 
-# ==============================
+# =========================
 # DISPLAY ITEMS
-# ==============================
-if st.session_state.invoice_items and isinstance(st.session_state.invoice_items, list):
+# =========================
+items = st.session_state.get("invoice_items", [])
 
-    df = pd.DataFrame(st.session_state.invoice_items)
+if isinstance(items, list) and len(items) > 0:
+
+    df = pd.DataFrame(items)
+
     subtotal = df["Total"].sum()
     cgst = subtotal * 0.09
     sgst = subtotal * 0.09
@@ -138,9 +146,9 @@ if st.session_state.invoice_items and isinstance(st.session_state.invoice_items,
     st.write(f"SGST (9%): ₹ {sgst:.2f}")
     st.write(f"Final Total: ₹ {total:.2f}")
 
-    # ==============================
-    # SAVE INVOICE TO DB
-    # ==============================
+    # =========================
+    # SAVE INVOICE
+    # =========================
     if st.button("Save Invoice"):
 
         if not customer_name.strip():
@@ -155,7 +163,7 @@ if st.session_state.invoice_items and isinstance(st.session_state.invoice_items,
                 (invoice_no, customer_name, phone, address, date, subtotal, cgst, sgst, total)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
-                    st.session_state.invoice_no,
+                    st.session_state["invoice_no"],
                     customer_name,
                     phone,
                     address,
@@ -166,13 +174,13 @@ if st.session_state.invoice_items and isinstance(st.session_state.invoice_items,
                     total
                 ))
 
-                for item in st.session_state.items:
+                for item in items:
                     c.execute("""
                     INSERT INTO invoice_items
                     (invoice_no, product, quantity, rate, total)
                     VALUES (?, ?, ?, ?, ?)
                     """, (
-                        st.session_state.invoice_no,
+                        st.session_state["invoice_no"],
                         item["Product"],
                         item["Quantity"],
                         item["Rate"],
@@ -181,23 +189,25 @@ if st.session_state.invoice_items and isinstance(st.session_state.invoice_items,
 
                 conn.commit()
                 st.success("Invoice Saved Successfully")
+
             except Exception as e:
                 st.error(f"Database Error: {e}")
+
             finally:
                 conn.close()
 
-    # ==============================
-    # GENERATE PDF (CLOUD SAFE)
-    # ==============================
+    # =========================
+    # GENERATE PDF
+    # =========================
     if st.button("Generate PDF"):
 
-        file_name = f"{st.session_state.invoice_no}.pdf"
+        file_name = f"{st.session_state['invoice_no']}.pdf"
         doc = SimpleDocTemplate(file_name)
         elements = []
 
         styles = getSampleStyleSheet()
 
-        elements.append(Paragraph(f"Invoice No: {st.session_state.invoice_no}", styles["Heading2"]))
+        elements.append(Paragraph(f"Invoice No: {st.session_state['invoice_no']}", styles["Heading2"]))
         elements.append(Paragraph(f"Customer: {customer_name}", styles["Normal"]))
         elements.append(Paragraph(f"Phone: {phone}", styles["Normal"]))
         elements.append(Paragraph(f"Date: {invoice_date}", styles["Normal"]))
@@ -205,7 +215,7 @@ if st.session_state.invoice_items and isinstance(st.session_state.invoice_items,
 
         table_data = [["Product", "Qty", "Rate", "Total"]]
 
-        for item in st.session_state.invoice_items.append:
+        for item in items:
             table_data.append([
                 item["Product"],
                 item["Quantity"],
@@ -236,14 +246,17 @@ if st.session_state.invoice_items and isinstance(st.session_state.invoice_items,
                 mime="application/pdf"
             )
 
-    if st.button("Clear"):
-        st.session_state.items = []
-        st.session_state.invoice_no = generate_invoice_number()
-        st.rerun()
+# =========================
+# CLEAR BUTTON
+# =========================
+if st.button("Clear Invoice"):
+    st.session_state["invoice_items"] = []
+    st.session_state["invoice_no"] = generate_invoice_number()
+    st.rerun()
 
-# ==============================
+# =========================
 # INVOICE HISTORY
-# ==============================
+# =========================
 st.markdown("---")
 st.subheader("Invoice History")
 
@@ -255,5 +268,3 @@ if not history.empty:
     st.dataframe(history)
 else:
     st.info("No invoices found")
-
-
