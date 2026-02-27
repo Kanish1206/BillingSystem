@@ -205,7 +205,7 @@ if st.session_state.invoice_items and isinstance(st.session_state.invoice_items,
 
         table_data = [["Product", "Qty", "Rate", "Total"]]
 
-        for item in st.session_state.items:
+        for item in st.session_state.invoice_items.append:
             table_data.append([
                 item["Product"],
                 item["Quantity"],
@@ -255,4 +255,5 @@ if not history.empty:
     st.dataframe(history)
 else:
     st.info("No invoices found")
+
 
