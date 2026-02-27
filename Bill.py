@@ -106,41 +106,65 @@ with col2:
 # ==============================
 st.subheader("Add Item")
 
-col1, col2, col3 = st.columns(3)
+col1, col2, col3, col4 = st.columns([3,1,1,1])
 
 with col1:
-    product = st.text_input("Product Name")
+    product = st.text_input("Product Name", key="product_input")
 
 with col2:
-    qty = st.number_input("Quantity", min_value=1, step=1)
+    qty = st.number_input("Quantity", min_value=1, step=1, key="qty_input")
 
 with col3:
-    rate = st.number_input("Rate", min_value=0.0)
+    rate = st.number_input("Rate", min_value=0.0, key="rate_input")
 
-if st.button("Add Item"):
-    if product.strip():
-        st.session_state["invoice_items"].append({
-            "Product": product,
-            "Quantity": qty,
-            "Rate": rate,
-            "Total": qty * rate
-        })
+with col4:
+    if st.button("Add"):
+        if product.strip() == "":
+            st.warning("Enter product name")
+        else:
+            st.session_state["invoice_items"].append({
+                "Product": product,
+                "Quantity": qty,
+                "Rate": rate,
+                "Total": qty * rate
+            })
+
+            # Clear inputs after adding
+            st.session_state["product_input"] = ""
+            st.session_state["qty_input"] = 1
+            st.session_state["rate_input"] = 0.0
+
 
 # ==============================
-# DISPLAY CURRENT ITEMS
+# DISPLAY ITEMS
 # ==============================
 items = st.session_state.get("invoice_items", [])
 
-if isinstance(items, list) and len(items) > 0:
+if len(items) > 0:
+
+    st.subheader("Current Items")
+
+    for i, item in enumerate(items):
+
+        col1, col2, col3, col4, col5 = st.columns([3,1,1,1,1])
+
+        col1.write(item["Product"])
+        col2.write(item["Quantity"])
+        col3.write(f"₹ {item['Rate']:.2f}")
+        col4.write(f"₹ {item['Total']:.2f}")
+
+        if col5.button("❌", key=f"delete_{i}"):
+            st.session_state["invoice_items"].pop(i)
+            st.rerun()
 
     df = pd.DataFrame(items)
+
     subtotal = df["Total"].sum()
     cgst = subtotal * 0.09
     sgst = subtotal * 0.09
     total = subtotal + cgst + sgst
 
-    st.dataframe(df)
-
+    st.markdown("---")
     st.write(f"Subtotal: ₹ {subtotal:.2f}")
     st.write(f"CGST (9%): ₹ {cgst:.2f}")
     st.write(f"SGST (9%): ₹ {sgst:.2f}")
@@ -324,3 +348,4 @@ if not history.empty:
 
 else:
     st.info("No invoices found")
+
