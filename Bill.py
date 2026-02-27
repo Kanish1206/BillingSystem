@@ -106,19 +106,17 @@ with col2:
 # ==============================
 st.subheader("Add Item")
 
-col1, col2, col3, col4 = st.columns([3,1,1,1])
+with st.form("add_item_form", clear_on_submit=True):
 
-with col1:
-    product = st.text_input("Product Name", key="product_input")
+    col1, col2, col3 = st.columns([3,1,1])
 
-with col2:
-    qty = st.number_input("Quantity", min_value=1, step=1, key="qty_input")
+    product = col1.text_input("Product Name")
+    qty = col2.number_input("Quantity", min_value=1, step=1)
+    rate = col3.number_input("Rate", min_value=0.0)
 
-with col3:
-    rate = st.number_input("Rate", min_value=0.0, key="rate_input")
+    submitted = st.form_submit_button("Add Item")
 
-with col4:
-    if st.button("Add"):
+    if submitted:
         if product.strip() == "":
             st.warning("Enter product name")
         else:
@@ -128,12 +126,6 @@ with col4:
                 "Rate": rate,
                 "Total": qty * rate
             })
-
-            # Clear inputs after adding
-            st.session_state["product_input"] = ""
-            st.session_state["qty_input"] = 1
-            st.session_state["rate_input"] = 0.0
-
 
 # ==============================
 # DISPLAY ITEMS
@@ -348,4 +340,5 @@ if not history.empty:
 
 else:
     st.info("No invoices found")
+
 
