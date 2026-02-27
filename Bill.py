@@ -149,53 +149,96 @@ if isinstance(items, list) and len(items) > 0:
     # =========================
     # GENERATE PDF (IN MEMORY)
     # =========================
-    if st.button("Generate PDF"):
+    from reportlab.lib import colors
+from reportlab.platypus import Table, TableStyle
+from reportlab.lib.styles import ParagraphStyle
+from reportlab.lib.enums import TA_RIGHT, TA_LEFT
+from reportlab.lib import fonts
 
-        buffer = BytesIO()
-        doc = SimpleDocTemplate(buffer)
-        elements = []
+if st.button("Generate PDF"):
 
-        styles = getSampleStyleSheet()
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer)
+    elements = []
 
-        elements.append(Paragraph(f"Invoice No: {st.session_state['invoice_no']}", styles["Heading2"]))
-        elements.append(Paragraph(f"Customer: {customer_name}", styles["Normal"]))
-        elements.append(Paragraph(f"Phone: {phone}", styles["Normal"]))
-        elements.append(Paragraph(f"Date: {invoice_date}", styles["Normal"]))
-        elements.append(Spacer(1, 0.3 * inch))
+    styles = getSampleStyleSheet()
 
-        table_data = [["Product", "Qty", "Rate", "Total"]]
+    # Custom Styles
+    right_style = ParagraphStyle(
+        name="Right",
+        parent=styles["Normal"],
+        alignment=TA_RIGHT
+    )
 
-        for item in items:
-            table_data.append([
-                item["Product"],
-                item["Quantity"],
-                f"{item['Rate']:.2f}",
-                f"{item['Total']:.2f}"
-            ])
+    bold_style = styles["Heading1"]
 
-        table_data.append(["", "", "Subtotal", f"{subtotal:.2f}"])
-        table_data.append(["", "", "CGST", f"{cgst:.2f}"])
-        table_data.append(["", "", "SGST", f"{sgst:.2f}"])
-        table_data.append(["", "", "Total", f"{total:.2f}"])
+    # ----------------------
+    # COMPANY HEADER
+    # ----------------------
+    elements.append(Paragraph("<b>Your Company Pvt Ltd</b>", bold_style))
+    elements.append(Paragraph("Ahmedabad, Gujarat", styles["Normal"]))
+    elements.append(Paragraph("GSTIN: 22AAAAA0000A1Z5", styles["Normal"]))
+    elements.append(Spacer(1, 0.3 * inch))
 
-        table = Table(table_data)
-        table.setStyle(TableStyle([
-            ("BACKGROUND", (0,0), (-1,0), colors.grey),
-            ("GRID", (0,0), (-1,-1), 1, colors.black),
-            ("ALIGN", (-1,1), (-1,-1), "RIGHT")
-        ]))
+    # ----------------------
+    # INVOICE INFO
+    # ----------------------
+    info_table = Table([
+        ["Invoice No:", st.session_state["invoice_no"]],
+        ["Invoice Date:", str(invoice_date)],
+        ["Customer:", customer_name],
+        ["Phone:", phone],
+    ], colWidths=[120, 300])
 
-        elements.append(table)
-        doc.build(elements)
+    elements.append(info_table)
+    elements.append(Spacer(1, 0.3 * inch))
 
-        buffer.seek(0)
+    # ----------------------
+    # ITEM TABLE
+    # ----------------------
+    table_data = [["Product", "Qty", "Rate", "Amount"]]
 
-        st.download_button(
-            label="Download Invoice PDF",
-            data=buffer,
-            file_name=f"{st.session_state['invoice_no']}.pdf",
-            mime="application/pdf"
-        )
+    for item in items:
+        table_data.append([
+            item["Product"],
+            item["Quantity"],
+            f"₹ {item['Rate']:.2f}",
+            f"₹ {item['Total']:.2f}"
+        ])
+
+    table_data.append(["", "", "Subtotal", f"₹ {subtotal:.2f}"])
+    table_data.append(["", "", "CGST (9%)", f"₹ {cgst:.2f}"])
+    table_data.append(["", "", "SGST (9%)", f"₹ {sgst:.2f}"])
+    table_data.append(["", "", "<b>Total</b>", f"<b>₹ {total:.2f}</b>"])
+
+    table = Table(table_data, colWidths=[200, 60, 80, 100])
+
+    table.setStyle(TableStyle([
+        ("BACKGROUND", (0,0), (-1,0), colors.lightgrey),
+        ("GRID", (0,0), (-1,-1), 0.5, colors.grey),
+        ("ALIGN", (1,1), (-1,-1), "RIGHT"),
+        ("FONTNAME", (0,0), (-1,-1), "Helvetica"),
+        ("FONTSIZE", (0,0), (-1,-1), 10),
+    ]))
+
+    elements.append(table)
+    elements.append(Spacer(1, 0.5 * inch))
+
+    # ----------------------
+    # FOOTER
+    # ----------------------
+    elements.append(Paragraph("Thank you for your business!", styles["Normal"]))
+    elements.append(Paragraph("Authorized Signature", right_style))
+
+    doc.build(elements)
+    buffer.seek(0)
+
+    st.download_button(
+        label="Download Invoice PDF",
+        data=buffer,
+        file_name=f"{st.session_state['invoice_no']}.pdf",
+        mime="application/pdf"
+    )
 
 # =========================
 # CLEAR
@@ -204,3 +247,4 @@ if st.button("Clear Invoice"):
     st.session_state["invoice_items"] = []
     st.session_state["invoice_no"] = generate_invoice_number()
     st.rerun()
+
