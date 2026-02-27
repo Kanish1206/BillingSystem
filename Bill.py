@@ -123,9 +123,9 @@ if st.button("Add Item"):
 # ==============================
 # DISPLAY ITEMS
 # ==============================
-if st.session_state.items:
+if st.session_state.invoice_items and isinstance(st.session_state.invoice_items, list):
 
-    df = pd.DataFrame(st.session_state.items)
+    df = pd.DataFrame(st.session_state.invoice_items)
     subtotal = df["Total"].sum()
     cgst = subtotal * 0.09
     sgst = subtotal * 0.09
@@ -255,3 +255,4 @@ if not history.empty:
     st.dataframe(history)
 else:
     st.info("No invoices found")
+
