@@ -2,15 +2,7 @@ import streamlit as st
 import pandas as pd
 import sqlite3
 from datetime import datetime
-from io import BytesIO
-
-# ReportLab imports for the professional PDF
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
-from reportlab.lib import colors
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.units import inch
-from reportlab.lib.pagesizes import A4
-from reportlab.lib.enums import TA_CENTER, TA_RIGHT
+from jinja2 import Environment, FileSystemLoader
 
 st.set_page_config(layout="wide", page_title="Tirupati Petroleum Billing", page_icon="⛽")
 st.title("⛽ Tirupati Petroleum - Billing System")
@@ -111,91 +103,6 @@ def generate_invoice_number():
 if st.session_state["invoice_no"] is None:
     st.session_state["invoice_no"] = generate_invoice_number()
 
-# ==============================
-# TIRUPATI PDF TEMPLATE GENERATOR
-# ==============================
-def create_tirupati_invoice(invoice_no, customer_name, vehicle_no, date, items_df, total_amt, subtotal=None, cgst=None, sgst=None):
-    buffer = BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=40, leftMargin=40, topMargin=40, bottomMargin=40)
-    elements = []
-    styles = getSampleStyleSheet()
-
-    # --- CUSTOM STYLES ---
-    title_style = ParagraphStyle(
-        'Title', parent=styles['Heading1'], alignment=TA_CENTER, 
-        fontSize=24, textColor=colors.HexColor("#B22222"), spaceAfter=5, fontName="Helvetica-Bold"
-    )
-    subtitle_style = ParagraphStyle(
-        'Subtitle', parent=styles['Normal'], alignment=TA_CENTER, 
-        fontSize=10, textColor=colors.dimgrey, spaceAfter=20
-    )
-    info_style = ParagraphStyle('Info', parent=styles['Normal'], fontSize=11, spaceAfter=6)
-    
-    # --- HEADER ---
-    elements.append(Paragraph("TIRUPATI PETROLEUM", title_style))
-    elements.append(Paragraph("TAX INVOICE / CASH MEMO", subtitle_style))
-    elements.append(HRFlowable(width="100%", thickness=1, color=colors.black, spaceBefore=0, spaceAfter=15))
-
-    # --- CUSTOMER & INVOICE DETAILS ---
-    cust_veh = vehicle_no if vehicle_no else "N/A"
-    cust_name = customer_name if customer_name else "Cash Customer"
-    
-    info_data = [
-        [Paragraph(f"<b>Bill To:</b> {cust_name}", info_style), Paragraph(f"<b>Invoice No:</b> {invoice_no}", info_style)],
-        [Paragraph(f"<b>Vehicle No:</b> {cust_veh}", info_style), Paragraph(f"<b>Date:</b> {date}", info_style)]
-    ]
-    info_table = Table(info_data, colWidths=[doc.width/2.0]*2)
-    info_table.setStyle(TableStyle([
-        ('ALIGN', (0,0), (0,-1), 'LEFT'),
-        ('ALIGN', (1,0), (1,-1), 'RIGHT'),
-        ('VALIGN', (0,0), (-1,-1), 'TOP'),
-    ]))
-    elements.append(info_table)
-    elements.append(Spacer(1, 0.3 * inch))
-
-    # --- ITEM TABLE ---
-    table_data = [["Product", "Volume/Qty", "Rate (₹)", "Total (₹)"]]
-    
-    for _, item in items_df.iterrows():
-        # .get() safely handles both uppercase (from session state) and lowercase (from DB)
-        table_data.append([
-            item.get("product", item.get("Product", "")),
-            f"{item.get('quantity', item.get('Quantity', 0)):.2f}",
-            f"{item.get('rate', item.get('Rate', 0)):.2f}",
-            f"{item.get('total', item.get('Total', 0)):.2f}"
-        ])
-
-    if subtotal is not None and cgst is not None and sgst is not None:
-        table_data.append(["", "", "Subtotal", f"{subtotal:.2f}"])
-        table_data.append(["", "", "CGST (9%)", f"{cgst:.2f}"])
-        table_data.append(["", "", "SGST (9%)", f"{sgst:.2f}"])
-    
-    table_data.append(["", "", "GRAND TOTAL", f"{total_amt:.2f}"])
-
-    item_table = Table(table_data, colWidths=[doc.width*0.4, doc.width*0.2, doc.width*0.2, doc.width*0.2])
-    item_table.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#f2f2f2")),
-        ('TEXTCOLOR', (0,0), (-1,0), colors.black),
-        ('ALIGN', (0,0), (0,-1), 'LEFT'),       
-        ('ALIGN', (1,0), (-1,-1), 'RIGHT'),     
-        ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
-        ('FONTNAME', (2,-1), (3,-1), 'Helvetica-Bold'), 
-        ('BOTTOMPADDING', (0,0), (-1,0), 10),
-        ('TOPPADDING', (0,0), (-1,0), 10),
-        ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
-    ]))
-    
-    elements.append(item_table)
-    elements.append(Spacer(1, 0.5 * inch))
-
-    # --- FOOTER ---
-    elements.append(HRFlowable(width="100%", thickness=0.5, color=colors.grey, spaceBefore=10, spaceAfter=10))
-    footer_style = ParagraphStyle('Footer', parent=styles['Normal'], alignment=TA_CENTER, fontSize=10, fontName="Helvetica-Oblique")
-    elements.append(Paragraph("Drive Safe! Thank you for visiting Tirupati Petroleum.", footer_style))
-
-    doc.build(elements)
-    buffer.seek(0)
-    return buffer
 
 # ==============================
 # CUSTOMER DETAILS
@@ -345,8 +252,8 @@ if not history.empty:
         col3.write(row["vehicle_no"] if row["vehicle_no"] else "-")
         col4.write(f"**₹ {row['total']:.2f}**")
 
-        # ================= VIEW & DOWNLOAD PDF =================
-        if col5.button("Download PDF", key=f"view_{row['invoice_no']}"):
+        # ================= VIEW & DOWNLOAD HTML =================
+        if col5.button("Download HTML", key=f"view_{row['invoice_no']}"):
 
             conn = get_connection()
             items_df = pd.read_sql_query(
@@ -355,24 +262,32 @@ if not history.empty:
             )
             conn.close()
 
-            # Generate the professional Tirupati PDF
-            pdf_buffer = create_tirupati_invoice(
+            # 1. Setup Jinja2 to read from the current folder
+            env = Environment(loader=FileSystemLoader('.'))
+            template = env.get_template('invoice_template.html')
+
+            # 2. Convert dataframe items to a list of dictionaries for HTML
+            items_list = items_df.to_dict('records')
+
+            # 3. Render the HTML string by passing Python variables into the template
+            html_content = template.render(
                 invoice_no=row['invoice_no'],
-                customer_name=row['customer_name'],
-                vehicle_no=row['vehicle_no'],
+                customer_name=row['customer_name'] if row['customer_name'] else "Cash Customer",
+                vehicle_no=row['vehicle_no'] if row['vehicle_no'] else "N/A",
                 date=row['date'],
-                items_df=items_df,
-                total_amt=row['total'],
+                items=items_list,
                 subtotal=row['subtotal'],
                 cgst=row['cgst'],
-                sgst=row['sgst']
+                sgst=row['sgst'],
+                total_amt=row['total']
             )
 
+            # 4. Create a download button for the HTML file
             st.download_button(
-                label="⬇️ Save PDF",
-                data=pdf_buffer,
-                file_name=f"Tirupati_Invoice_{row['invoice_no'].replace('/', '_')}.pdf",
-                mime="application/pdf",
+                label="⬇️ Save Invoice",
+                data=html_content,
+                file_name=f"Tirupati_Invoice_{row['invoice_no'].replace('/', '_')}.html",
+                mime="text/html",
                 key=f"dl_{row['invoice_no']}"
             )
 
