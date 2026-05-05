@@ -259,10 +259,6 @@ with col_summary:
 st.markdown("---")
 st.subheader("🗂️ Invoice History & Records")
 
-# Initialize a session state variable to track which invoice is open
-if "viewing_invoice" not in st.session_state:
-    st.session_state["viewing_invoice"] = None
-
 conn = get_connection()
 history = pd.read_sql_query("SELECT * FROM invoices ORDER BY id DESC LIMIT 50", conn)
 conn.close()
@@ -285,15 +281,13 @@ if not history.empty:
         c3.write(f"📅 {row['date']}")
         c4.write(f"💰 ₹ {row['total']:.2f}")
         
-        # --- THE VIEW BUTTON LOGIC ---
-        # It toggles between "View" and "Close" depending on what is open
+        # View Button Logic (Toggles the view state)
         button_label = "⬇️ Close" if st.session_state["viewing_invoice"] == row["invoice_no"] else "👁️ View"
-        
         if c5.button(button_label, key=f"view_btn_{row['invoice_no']}", use_container_width=True):
             if st.session_state["viewing_invoice"] == row["invoice_no"]:
-                st.session_state["viewing_invoice"] = None # Close it if it's already open
+                st.session_state["viewing_invoice"] = None # Close if already viewing
             else:
-                st.session_state["viewing_invoice"] = row["invoice_no"] # Open this specific one
+                st.session_state["viewing_invoice"] = row["invoice_no"] # Open this specific invoice
             st.rerun()
 
         # --- EXPANDED DETAILS (Only shows if "View" is clicked) ---
@@ -318,7 +312,35 @@ if not history.empty:
                     st.write(f"**Taxes (18%):** ₹{row['cgst'] + row['sgst']:.2f}")
                     st.markdown(f"#### **Grand Total: ₹{row['total']:.2f}**")
                     
-                    # (Your HTML Download and Delete buttons remain here)
+                    # Setup Jinja2 Template Download
+                    env = Environment(loader=FileSystemLoader('.'))
+                    try:
+                        template = env.get_template('invoice_template.html')
+                        items_list = items_df.to_dict('records')
+                        html_content = template.render(
+                            invoice_no=row['invoice_no'],
+                            customer_name=row['customer_name'] if row['customer_name'] else "Cash Customer",
+                            vehicle_no=row['vehicle_no'] if row['vehicle_no'] else "N/A",
+                            date=row['date'],
+                            items=items_list,
+                            subtotal=row['subtotal'],
+                            cgst=row['cgst'],
+                            sgst=row['sgst'],
+                            total_amt=row['total']
+                        )
+                        
+                        st.download_button(
+                            label="⬇️ Download HTML Invoice",
+                            data=html_content,
+                            file_name=f"Tirupati_Invoice_{row['invoice_no'].replace('/', '_')}.html",
+                            mime="text/html",
+                            key=f"dl_{row['invoice_no']}",
+                            use_container_width=True,
+                            type="primary"
+                        )
+                    except Exception as e:
+                        st.warning(f"Template error: Ensure 'invoice_template.html' exists in the directory.")
+
                     if st.button("🗑️ Delete Invoice", key=f"del_inv_{row['invoice_no']}", use_container_width=True):
                         conn = get_connection()
                         c = conn.cursor()
@@ -330,6 +352,6 @@ if not history.empty:
                         st.session_state["viewing_invoice"] = None # Reset view state after deleting
                         st.toast(f"Deleted {row['invoice_no']}", icon="🗑️")
                         st.rerun()
-            st.markdown("---") 
+            st.markdown("---") # Visual separator beneath expanded view
 else:
     st.info("No invoices found. Start billing to see your history here.")
