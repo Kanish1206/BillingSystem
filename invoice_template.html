@@ -3,9 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tirupati Petroleum Invoice</title>
+    <title>Invoice {{ invoice_no }}</title>
     <style>
-        /* Import a condensed font for headings to match the design */
         @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@500;700&family=Roboto:wght@400;500;700&display=swap');
 
         :root {
@@ -39,7 +38,6 @@
             box-sizing: border-box;
         }
 
-        /* Decorative Background Waves on the Left */
         .invoice-container::before {
             content: '';
             position: absolute;
@@ -77,7 +75,6 @@
             z-index: 1;
         }
 
-        /* Main Content Wrapper (keeps text above waves) */
         .content-wrapper {
             position: relative;
             z-index: 2;
@@ -131,7 +128,6 @@
             line-height: 1.6;
         }
 
-        /* Meta Data Grid (Invoice #, Date, etc.) */
         .meta-data {
             flex: 1.2;
         }
@@ -154,7 +150,6 @@
             text-align: right;
         }
 
-        /* Invoice Table */
         table {
             width: 100%;
             border-collapse: collapse;
@@ -188,7 +183,6 @@
             text-align: left;
         }
 
-        /* Totals Section */
         .totals-wrapper {
             display: flex;
             justify-content: flex-end;
@@ -229,7 +223,6 @@
 <body>
 
     <div class="invoice-container">
-        <!-- Extra background layer to simulate the complex curves -->
         <div class="wave-three"></div>
         
         <div class="content-wrapper">
@@ -246,32 +239,22 @@
             <div class="billing-grid">
                 <div class="billing-col">
                     <h3>BILL TO</h3>
-                    <p>Rajesh Kumar<br>
-                    Flat 402, Shivam Apts<br>
-                    Pune, MH 411038</p>
+                    <p><strong>{{ customer_name }}</strong><br>
+                    Vehicle Reg: {{ vehicle_no }}</p>
                 </div>
                 <div class="billing-col">
-                    <h3>SHIP TO</h3>
-                    <p>Rajesh Kumar<br>
-                    Flat 402, Shivam Apts<br>
-                    Pune, MH 411038</p>
+                    <h3>DETAILS</h3>
+                    <p>Fuel & Services<br>
+                    Drive Safe!</p>
                 </div>
                 <div class="billing-col meta-data">
                     <div class="meta-row">
                         <span class="label">INVOICE #</span>
-                        <span class="value">IND-001</span>
+                        <span class="value">{{ invoice_no }}</span>
                     </div>
                     <div class="meta-row">
-                        <span class="label">INVOICE DATE</span>
-                        <span class="value">11/02/2026</span>
-                    </div>
-                    <div class="meta-row">
-                        <span class="label">P.O.#</span>
-                        <span class="value">2312/2026</span>
-                    </div>
-                    <div class="meta-row">
-                        <span class="label">DUE DATE</span>
-                        <span class="value">26/02/2026</span>
+                        <span class="label">DATE</span>
+                        <span class="value">{{ date }}</span>
                     </div>
                 </div>
             </div>
@@ -279,31 +262,22 @@
             <table>
                 <thead>
                     <tr>
-                        <th>QTY</th>
-                        <th class="desc-col">DESCRIPTION</th>
-                        <th>UNIT PRICE</th>
+                        <th>QTY / VOL</th>
+                        <th class="desc-col">PRODUCT</th>
+                        <th>RATE (₹)</th>
                         <th>AMOUNT</th>
                     </tr>
                 </thead>
                 <tbody>
+                    <!-- Jinja2 Loop to generate table rows dynamically -->
+                    {% for item in items %}
                     <tr>
-                        <td>1</td>
-                        <td class="desc-col">Front and rear brake cables</td>
-                        <td>₹800.00</td>
-                        <td>₹800.00</td>
+                        <td>{{ "%.2f"|format(item.Quantity) }}</td>
+                        <td class="desc-col">{{ item.Product }}</td>
+                        <td>₹{{ "%.2f"|format(item.Rate) }}</td>
+                        <td>₹{{ "%.2f"|format(item.Total) }}</td>
                     </tr>
-                    <tr>
-                        <td>2</td>
-                        <td class="desc-col">New set of pedal arms</td>
-                        <td>₹1200.00</td>
-                        <td>₹2400.00</td>
-                    </tr>
-                    <tr>
-                        <td>3</td>
-                        <td class="desc-col">Labor 3hrs</td>
-                        <td>₹400.00</td>
-                        <td>₹1200.00</td>
-                    </tr>
+                    {% endfor %}
                 </tbody>
             </table>
 
@@ -311,19 +285,19 @@
                 <div class="totals-section">
                     <div class="totals-row">
                         <span>Subtotal</span>
-                        <span>₹4400.00</span>
+                        <span>₹{{ "%.2f"|format(subtotal) }}</span>
                     </div>
                     <div class="totals-row">
                         <span>CGST @ 9%</span>
-                        <span>₹396.00</span>
+                        <span>₹{{ "%.2f"|format(cgst) }}</span>
                     </div>
                     <div class="totals-row">
                         <span>SGST @ 9%</span>
-                        <span>₹396.00</span>
+                        <span>₹{{ "%.2f"|format(sgst) }}</span>
                     </div>
                     <div class="totals-row grand-total">
                         <span class="total-label">TOTAL</span>
-                        <span class="total-amount">₹5192.00</span>
+                        <span class="total-amount">₹{{ "%.2f"|format(total_amt) }}</span>
                     </div>
                 </div>
             </div>
