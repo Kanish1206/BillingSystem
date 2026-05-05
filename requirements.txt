@@ -1,4 +1,5 @@
 streamlit
 pandas
-Jinja2
+jinja2
 xhtml2pdf
+reportlab
