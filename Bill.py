@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import sqlite3
 from datetime import datetime
+from jinja2 import Environment, FileSystemLoader
 from io import BytesIO
 
 # ReportLab imports for the professional PDF
@@ -111,135 +112,43 @@ def generate_invoice_number():
 if st.session_state["invoice_no"] is None:
     st.session_state["invoice_no"] = generate_invoice_number()
 
-# ==============================
-# TIRUPATI PDF TEMPLATE GENERATOR
-# ==============================
-def create_tirupati_invoice(invoice_no, customer_name, vehicle_no, date, items_df, total_amt, subtotal=None, cgst=None, sgst=None):
-    buffer = BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=40, leftMargin=40, topMargin=40, bottomMargin=40)
-    elements = []
-    styles = getSampleStyleSheet()
+if col5.button("Download HTML", key=f"view_{row['invoice_no']}"):
 
-    # --- CUSTOM STYLES ---
-    title_style = ParagraphStyle(
-        'Title', parent=styles['Heading1'], alignment=TA_CENTER, 
-        fontSize=24, textColor=colors.HexColor("#B22222"), spaceAfter=5, fontName="Helvetica-Bold"
-    )
-    subtitle_style = ParagraphStyle(
-        'Subtitle', parent=styles['Normal'], alignment=TA_CENTER, 
-        fontSize=10, textColor=colors.dimgrey, spaceAfter=20
-    )
-    info_style = ParagraphStyle('Info', parent=styles['Normal'], fontSize=11, spaceAfter=6)
-    
-    # --- HEADER ---
-    elements.append(Paragraph("TIRUPATI PETROLEUM", title_style))
-    elements.append(Paragraph("TAX INVOICE / CASH MEMO", subtitle_style))
-    elements.append(HRFlowable(width="100%", thickness=1, color=colors.black, spaceBefore=0, spaceAfter=15))
+            conn = get_connection()
+            items_df = pd.read_sql_query(
+                "SELECT * FROM invoice_items WHERE invoice_no=?",
+                conn, params=(row["invoice_no"],)
+            )
+            conn.close()
 
-    # --- CUSTOMER & INVOICE DETAILS ---
-    cust_veh = vehicle_no if vehicle_no else "N/A"
-    cust_name = customer_name if customer_name else "Cash Customer"
-    
-    info_data = [
-        [Paragraph(f"<b>Bill To:</b> {cust_name}", info_style), Paragraph(f"<b>Invoice No:</b> {invoice_no}", info_style)],
-        [Paragraph(f"<b>Vehicle No:</b> {cust_veh}", info_style), Paragraph(f"<b>Date:</b> {date}", info_style)]
-    ]
-    info_table = Table(info_data, colWidths=[doc.width/2.0]*2)
-    info_table.setStyle(TableStyle([
-        ('ALIGN', (0,0), (0,-1), 'LEFT'),
-        ('ALIGN', (1,0), (1,-1), 'RIGHT'),
-        ('VALIGN', (0,0), (-1,-1), 'TOP'),
-    ]))
-    elements.append(info_table)
-    elements.append(Spacer(1, 0.3 * inch))
+            # 1. Setup Jinja2 to read from the current folder
+            env = Environment(loader=FileSystemLoader('.'))
+            template = env.get_template('invoice_template.html')
 
-    # --- ITEM TABLE ---
-    table_data = [["Product", "Volume/Qty", "Rate (₹)", "Total (₹)"]]
-    
-    for _, item in items_df.iterrows():
-        # .get() safely handles both uppercase (from session state) and lowercase (from DB)
-        table_data.append([
-            item.get("product", item.get("Product", "")),
-            f"{item.get('quantity', item.get('Quantity', 0)):.2f}",
-            f"{item.get('rate', item.get('Rate', 0)):.2f}",
-            f"{item.get('total', item.get('Total', 0)):.2f}"
-        ])
+            # 2. Convert dataframe items to a list of dictionaries for HTML
+            items_list = items_df.to_dict('records')
 
-    if subtotal is not None and cgst is not None and sgst is not None:
-        table_data.append(["", "", "Subtotal", f"{subtotal:.2f}"])
-        table_data.append(["", "", "CGST (9%)", f"{cgst:.2f}"])
-        table_data.append(["", "", "SGST (9%)", f"{sgst:.2f}"])
-    
-    table_data.append(["", "", "GRAND TOTAL", f"{total_amt:.2f}"])
+            # 3. Render the HTML string by passing Python variables into the template
+            html_content = template.render(
+                invoice_no=row['invoice_no'],
+                customer_name=row['customer_name'] if row['customer_name'] else "Cash Customer",
+                vehicle_no=row['vehicle_no'] if row['vehicle_no'] else "N/A",
+                date=row['date'],
+                items=items_list,
+                subtotal=row['subtotal'],
+                cgst=row['cgst'],
+                sgst=row['sgst'],
+                total_amt=row['total']
+            )
 
-    item_table = Table(table_data, colWidths=[doc.width*0.4, doc.width*0.2, doc.width*0.2, doc.width*0.2])
-    item_table.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#f2f2f2")),
-        ('TEXTCOLOR', (0,0), (-1,0), colors.black),
-        ('ALIGN', (0,0), (0,-1), 'LEFT'),       
-        ('ALIGN', (1,0), (-1,-1), 'RIGHT'),     
-        ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
-        ('FONTNAME', (2,-1), (3,-1), 'Helvetica-Bold'), 
-        ('BOTTOMPADDING', (0,0), (-1,0), 10),
-        ('TOPPADDING', (0,0), (-1,0), 10),
-        ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
-    ]))
-    
-    elements.append(item_table)
-    elements.append(Spacer(1, 0.5 * inch))
-
-    # --- FOOTER ---
-    elements.append(HRFlowable(width="100%", thickness=0.5, color=colors.grey, spaceBefore=10, spaceAfter=10))
-    footer_style = ParagraphStyle('Footer', parent=styles['Normal'], alignment=TA_CENTER, fontSize=10, fontName="Helvetica-Oblique")
-    elements.append(Paragraph("Drive Safe! Thank you for visiting Tirupati Petroleum.", footer_style))
-
-    doc.build(elements)
-    buffer.seek(0)
-    return buffer
-
-# ==============================
-# CUSTOMER DETAILS
-# ==============================
-st.subheader("📝 Customer & Vehicle Details")
-
-col1, col2 = st.columns(2)
-
-with col1:
-    customer_name = st.text_input("Customer Name", placeholder="e.g. Rahul Sharma or 'Cash'")
-    phone = st.text_input("Phone Number")
-
-with col2:
-    vehicle_no = st.text_input("Vehicle Number", placeholder="e.g. MH 12 AB 1234")
-    invoice_date = st.date_input("Invoice Date", datetime.today())
-
-# ==============================
-# ADD ITEM
-# ==============================
-st.markdown("---")
-st.subheader("⛽ Add Fuel / Products")
-
-col1, col2, col3, col4 = st.columns([2, 1.5, 1.5, 1])
-
-product = col1.selectbox("Product", ["Petrol", "Diesel", "Engine Oil", "Coolant", "Other"])
-
-if product == "Petrol":
-    auto_rate = st.session_state["petrol_rate"]
-elif product == "Diesel":
-    auto_rate = st.session_state["diesel_rate"]
-else:
-    auto_rate = 0.0
-
-qty = col2.number_input("Volume/Qty (Liters/Nos)", min_value=0.01, value=1.00, step=0.50, format="%.2f")
-rate = col3.number_input("Rate (₹)", value=float(auto_rate), min_value=0.0, format="%.2f")
-
-if col4.button("➕ Add to Bill", use_container_width=True):
-    st.session_state["invoice_items"].append({
-        "Product": product,
-        "Quantity": qty,
-        "Rate": rate,
-        "Total": qty * rate
-    })
-    st.rerun()
+            # 4. Create a download button for the HTML file
+            st.download_button(
+                label="⬇️ Download Invoice (HTML)",
+                data=html_content,
+                file_name=f"Tirupati_Invoice_{row['invoice_no'].replace('/', '_')}.html",
+                mime="text/html",
+                key=f"dl_{row['invoice_no']}"
+            )
 
 # ==============================
 # DISPLAY ITEMS & BILLING
