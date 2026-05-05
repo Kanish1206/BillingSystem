@@ -2,135 +2,333 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Invoice - {{ invoice_no }}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tirupati Petroleum Invoice</title>
     <style>
+        /* Import a condensed font for headings to match the design */
+        @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@500;700&family=Roboto:wght@400;500;700&display=swap');
+
+        :root {
+            --primary-blue: #234E7B;
+            --accent-blue: #6A9DB2;
+            --border-color: #B2D8D8;
+            --text-dark: #1A1A1A;
+            --wave-light-green: rgba(220, 240, 210, 0.6);
+            --wave-light-blue: rgba(200, 230, 230, 0.5);
+            --wave-yellow: rgba(245, 245, 210, 0.4);
+        }
+
         body {
-            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
-            color: #333;
+            font-family: 'Roboto', Arial, sans-serif;
+            color: var(--text-dark);
+            background-color: #f4f4f4;
             margin: 0;
             padding: 20px;
+            display: flex;
+            justify-content: center;
         }
-        .invoice-box {
-            max-width: 800px;
-            margin: auto;
-            padding: 30px;
-            border: 1px solid #eee;
-            box-shadow: 0 0 10px rgba(0, 0, 0, 0.15);
+
+        .invoice-container {
+            width: 800px;
+            min-height: 1000px;
             background-color: #fff;
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            padding: 60px;
+            box-sizing: border-box;
         }
-        .header {
-            text-align: center;
-            margin-bottom: 30px;
+
+        /* Decorative Background Waves on the Left */
+        .invoice-container::before {
+            content: '';
+            position: absolute;
+            top: -10%;
+            left: -15%;
+            width: 40%;
+            height: 120%;
+            background: var(--wave-light-blue);
+            border-radius: 50% 50% 50% 50% / 40% 60% 40% 60%;
+            z-index: 1;
+            transform: rotate(-5deg);
         }
-        .header h1 {
-            color: #B22222;
+
+        .invoice-container::after {
+            content: '';
+            position: absolute;
+            top: -20%;
+            left: -25%;
+            width: 50%;
+            height: 150%;
+            background: var(--wave-light-green);
+            border-radius: 50% 50% 50% 50% / 30% 70% 30% 70%;
+            z-index: 1;
+            transform: rotate(10deg);
+        }
+
+        .wave-three {
+            position: absolute;
+            top: 20%;
+            left: -20%;
+            width: 40%;
+            height: 100%;
+            background: var(--wave-yellow);
+            border-radius: 50% 50% 50% 50% / 60% 40% 60% 40%;
+            z-index: 1;
+        }
+
+        /* Main Content Wrapper (keeps text above waves) */
+        .content-wrapper {
+            position: relative;
+            z-index: 2;
+        }
+
+        header {
+            margin-bottom: 50px;
+        }
+
+        .invoice-title {
+            font-family: 'Oswald', sans-serif;
+            font-size: 58px;
+            color: var(--primary-blue);
+            margin: 0 0 20px 0;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+        }
+
+        .company-info {
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        .company-info strong {
+            font-size: 16px;
+            color: var(--text-dark);
+        }
+
+        .billing-grid {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 40px;
+            font-size: 14px;
+        }
+
+        .billing-col {
+            flex: 1;
+            padding-right: 20px;
+        }
+
+        .billing-col h3 {
+            font-family: 'Oswald', sans-serif;
+            color: var(--accent-blue);
+            font-size: 18px;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+        }
+
+        .billing-col p {
             margin: 0;
-            font-size: 32px;
+            line-height: 1.6;
         }
-        .header p {
-            color: #777;
-            margin: 5px 0 0 0;
+
+        /* Meta Data Grid (Invoice #, Date, etc.) */
+        .meta-data {
+            flex: 1.2;
         }
-        .info-table {
-            width: 100%;
-            margin-bottom: 30px;
+
+        .meta-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
         }
-        .info-table td {
-            padding: 5px;
-            vertical-align: top;
+
+        .meta-row .label {
+            font-family: 'Oswald', sans-serif;
+            color: var(--accent-blue);
+            font-size: 16px;
+            text-transform: uppercase;
         }
-        .info-table .right {
+
+        .meta-row .value {
+            font-weight: 500;
             text-align: right;
         }
-        .items-table {
+
+        /* Invoice Table */
+        table {
             width: 100%;
             border-collapse: collapse;
+            margin-bottom: 30px;
         }
-        .items-table th, .items-table td {
-            padding: 12px;
-            border-bottom: 1px solid #ddd;
-            text-align: right;
+
+        th {
+            font-family: 'Oswald', sans-serif;
+            color: var(--primary-blue);
+            font-size: 16px;
+            text-transform: uppercase;
+            padding: 12px 10px;
+            border-top: 2px solid var(--border-color);
+            border-bottom: 2px solid var(--border-color);
+            text-align: center;
         }
-        .items-table th {
-            background-color: #f8f8f8;
-            font-weight: bold;
+
+        th.desc-col {
+            text-align: left;
+            width: 50%;
         }
-        .items-table th:first-child, .items-table td:first-child {
+
+        td {
+            padding: 15px 10px;
+            text-align: center;
+            font-size: 14px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        td.desc-col {
             text-align: left;
         }
-        .total-row {
-            font-weight: bold;
+
+        /* Totals Section */
+        .totals-wrapper {
+            display: flex;
+            justify-content: flex-end;
+            margin-top: 20px;
         }
-        .footer {
-            margin-top: 40px;
-            text-align: center;
-            color: #777;
-            font-style: italic;
-            border-top: 1px solid #eee;
-            padding-top: 10px;
+
+        .totals-section {
+            width: 350px;
+        }
+
+        .totals-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 10px;
+            font-size: 14px;
+        }
+
+        .totals-row.grand-total {
+            margin-top: 15px;
+            padding-top: 15px;
+        }
+
+        .grand-total .total-label {
+            font-family: 'Oswald', sans-serif;
+            color: var(--accent-blue);
+            font-size: 24px;
+            text-transform: uppercase;
+        }
+
+        .grand-total .total-amount {
+            font-family: 'Oswald', sans-serif;
+            color: var(--primary-blue);
+            font-size: 24px;
+            font-weight: bold;
         }
     </style>
 </head>
 <body>
-    <div class="invoice-box">
-        <div class="header">
-            <h1>TIRUPATI PETROLEUM</h1>
-            <p>TAX INVOICE / CASH MEMO</p>
-        </div>
 
-        <table class="info-table">
-            <tr>
-                <td>
-                    <b>Bill To:</b> {{ customer_name }}<br>
-                    <b>Vehicle No:</b> {{ vehicle_no }}
-                </td>
-                <td class="right">
-                    <b>Invoice No:</b> {{ invoice_no }}<br>
-                    <b>Date:</b> {{ date }}
-                </td>
-            </tr>
-        </table>
+    <div class="invoice-container">
+        <!-- Extra background layer to simulate the complex curves -->
+        <div class="wave-three"></div>
+        
+        <div class="content-wrapper">
+            <header>
+                <h1 class="invoice-title">INVOICE</h1>
+                <div class="company-info">
+                    <strong>Tirupati Petroleum</strong><br>
+                    Plot No. 45, MIDC Industrial Area<br>
+                    Pune, Maharashtra 411018<br>
+                    <strong>GSTIN:</strong> 27ABCDE1234F1Z5
+                </div>
+            </header>
 
-        <table class="items-table">
-            <tr>
-                <th>Product</th>
-                <th>Volume/Qty</th>
-                <th>Rate (₹)</th>
-                <th>Total (₹)</th>
-            </tr>
-            {% for item in items %}
-            <tr>
-                <td>{{ item.product if item.product else item.Product }}</td>
-                <td>{{ "%.2f"|format(item.quantity if item.quantity else item.Quantity) }}</td>
-                <td>₹ {{ "%.2f"|format(item.rate if item.rate else item.Rate) }}</td>
-                <td>₹ {{ "%.2f"|format(item.total if item.total else item.Total) }}</td>
-            </tr>
-            {% endfor %}
-            <tr>
-                <td colspan="2"></td>
-                <td>Subtotal</td>
-                <td>₹ {{ "%.2f"|format(subtotal) }}</td>
-            </tr>
-            <tr>
-                <td colspan="2"></td>
-                <td>CGST (9%)</td>
-                <td>₹ {{ "%.2f"|format(cgst) }}</td>
-            </tr>
-            <tr>
-                <td colspan="2"></td>
-                <td>SGST (9%)</td>
-                <td>₹ {{ "%.2f"|format(sgst) }}</td>
-            </tr>
-            <tr class="total-row">
-                <td colspan="2"></td>
-                <td>GRAND TOTAL</td>
-                <td>₹ {{ "%.2f"|format(total_amt) }}</td>
-            </tr>
-        </table>
+            <div class="billing-grid">
+                <div class="billing-col">
+                    <h3>BILL TO</h3>
+                    <p>Rajesh Kumar<br>
+                    Flat 402, Shivam Apts<br>
+                    Pune, MH 411038</p>
+                </div>
+                <div class="billing-col">
+                    <h3>SHIP TO</h3>
+                    <p>Rajesh Kumar<br>
+                    Flat 402, Shivam Apts<br>
+                    Pune, MH 411038</p>
+                </div>
+                <div class="billing-col meta-data">
+                    <div class="meta-row">
+                        <span class="label">INVOICE #</span>
+                        <span class="value">IND-001</span>
+                    </div>
+                    <div class="meta-row">
+                        <span class="label">INVOICE DATE</span>
+                        <span class="value">11/02/2026</span>
+                    </div>
+                    <div class="meta-row">
+                        <span class="label">P.O.#</span>
+                        <span class="value">2312/2026</span>
+                    </div>
+                    <div class="meta-row">
+                        <span class="label">DUE DATE</span>
+                        <span class="value">26/02/2026</span>
+                    </div>
+                </div>
+            </div>
 
-        <div class="footer">
-            Drive Safe! Thank you for visiting Tirupati Petroleum.
+            <table>
+                <thead>
+                    <tr>
+                        <th>QTY</th>
+                        <th class="desc-col">DESCRIPTION</th>
+                        <th>UNIT PRICE</th>
+                        <th>AMOUNT</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>1</td>
+                        <td class="desc-col">Front and rear brake cables</td>
+                        <td>₹800.00</td>
+                        <td>₹800.00</td>
+                    </tr>
+                    <tr>
+                        <td>2</td>
+                        <td class="desc-col">New set of pedal arms</td>
+                        <td>₹1200.00</td>
+                        <td>₹2400.00</td>
+                    </tr>
+                    <tr>
+                        <td>3</td>
+                        <td class="desc-col">Labor 3hrs</td>
+                        <td>₹400.00</td>
+                        <td>₹1200.00</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <div class="totals-wrapper">
+                <div class="totals-section">
+                    <div class="totals-row">
+                        <span>Subtotal</span>
+                        <span>₹4400.00</span>
+                    </div>
+                    <div class="totals-row">
+                        <span>CGST @ 9%</span>
+                        <span>₹396.00</span>
+                    </div>
+                    <div class="totals-row">
+                        <span>SGST @ 9%</span>
+                        <span>₹396.00</span>
+                    </div>
+                    <div class="totals-row grand-total">
+                        <span class="total-label">TOTAL</span>
+                        <span class="total-amount">₹5192.00</span>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
+
 </body>
 </html>
