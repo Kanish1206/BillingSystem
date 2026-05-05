@@ -66,6 +66,8 @@ if "petrol_rate" not in st.session_state:
     st.session_state["petrol_rate"] = 106.00
 if "diesel_rate" not in st.session_state:
     st.session_state["diesel_rate"] = 94.00
+if "viewing_invoice" not in st.session_state:
+    st.session_state["viewing_invoice"] = None
 
 # ==============================
 # SIDEBAR: MANAGE FUEL RATES
@@ -251,7 +253,6 @@ with col_summary:
                     st.session_state["invoice_items"] = []
                     st.rerun()
 
-
 # ==============================
 # INVOICE HISTORY & VIEW
 # ==============================
@@ -263,67 +264,94 @@ history = pd.read_sql_query("SELECT * FROM invoices ORDER BY id DESC LIMIT 50", 
 conn.close()
 
 if not history.empty:
+    # --- TABLE HEADER ---
+    h1, h2, h3, h4, h5 = st.columns([2, 2, 2, 2, 1])
+    h1.markdown("**Invoice No.**")
+    h2.markdown("**Customer Name**")
+    h3.markdown("**Date**")
+    h4.markdown("**Total Amount**")
+    h5.markdown("**Action**")
+    st.markdown("---")
+
     for index, row in history.iterrows():
-        # Modern Expander acts as the "View" button
-        with st.expander(f"🧾 {row['invoice_no']} | 👤 {row['customer_name']} | 📅 {row['date']} | 💰 ₹ {row['total']:.2f}"):
-            
-            # Fetch items for this specific invoice
-            conn = get_connection()
-            items_df = pd.read_sql_query("SELECT product as Product, quantity as Quantity, rate as Rate, total as Total FROM invoice_items WHERE invoice_no=?", conn, params=(row["invoice_no"],))
-            conn.close()
+        # --- ROW DATA ---
+        c1, c2, c3, c4, c5 = st.columns([2, 2, 2, 2, 1])
+        c1.write(f"🧾 {row['invoice_no']}")
+        c2.write(f"👤 {row['customer_name']}")
+        c3.write(f"📅 {row['date']}")
+        c4.write(f"💰 ₹ {row['total']:.2f}")
+        
+        # View Button Logic (Toggles the view state)
+        button_label = "⬇️ Close" if st.session_state["viewing_invoice"] == row["invoice_no"] else "👁️ View"
+        if c5.button(button_label, key=f"view_btn_{row['invoice_no']}", use_container_width=True):
+            if st.session_state["viewing_invoice"] == row["invoice_no"]:
+                st.session_state["viewing_invoice"] = None # Close if already viewing
+            else:
+                st.session_state["viewing_invoice"] = row["invoice_no"] # Open this specific invoice
+            st.rerun()
 
-            v_col1, v_col2 = st.columns([2, 1])
-            
-            with v_col1:
-                st.markdown("**Invoice Items:**")
-                st.dataframe(items_df, use_container_width=True, hide_index=True)
-            
-            with v_col2:
-                st.markdown("**Invoice Details:**")
-                st.write(f"**Vehicle No:** {row['vehicle_no'] if row['vehicle_no'] else 'N/A'}")
-                st.write(f"**Phone:** {row['phone'] if row['phone'] else 'N/A'}")
-                st.write(f"**Subtotal:** ₹{row['subtotal']:.2f}")
-                st.write(f"**Taxes (18%):** ₹{row['cgst'] + row['sgst']:.2f}")
-                st.markdown(f"#### **Grand Total: ₹{row['total']:.2f}**")
+        # --- EXPANDED DETAILS (Only shows if "View" is clicked) ---
+        if st.session_state["viewing_invoice"] == row['invoice_no']:
+            with st.container(border=True):
+                # Fetch items for this specific invoice
+                conn = get_connection()
+                items_df = pd.read_sql_query("SELECT product as Product, quantity as Quantity, rate as Rate, total as Total FROM invoice_items WHERE invoice_no=?", conn, params=(row["invoice_no"],))
+                conn.close()
+
+                v_col1, v_col2 = st.columns([2, 1])
                 
-                # Setup Jinja2 Template Download
-                env = Environment(loader=FileSystemLoader('.'))
-                try:
-                    template = env.get_template('invoice_template.html')
-                    items_list = items_df.to_dict('records')
-                    html_content = template.render(
-                        invoice_no=row['invoice_no'],
-                        customer_name=row['customer_name'] if row['customer_name'] else "Cash Customer",
-                        vehicle_no=row['vehicle_no'] if row['vehicle_no'] else "N/A",
-                        date=row['date'],
-                        items=items_list,
-                        subtotal=row['subtotal'],
-                        cgst=row['cgst'],
-                        sgst=row['sgst'],
-                        total_amt=row['total']
-                    )
+                with v_col1:
+                    st.markdown("**Invoice Items:**")
+                    st.dataframe(items_df, use_container_width=True, hide_index=True)
+                
+                with v_col2:
+                    st.markdown("**Invoice Details:**")
+                    st.write(f"**Vehicle No:** {row['vehicle_no'] if row['vehicle_no'] else 'N/A'}")
+                    st.write(f"**Phone:** {row['phone'] if row['phone'] else 'N/A'}")
+                    st.write(f"**Subtotal:** ₹{row['subtotal']:.2f}")
+                    st.write(f"**Taxes (18%):** ₹{row['cgst'] + row['sgst']:.2f}")
+                    st.markdown(f"#### **Grand Total: ₹{row['total']:.2f}**")
                     
-                    st.download_button(
-                        label="⬇️ Download HTML Invoice",
-                        data=html_content,
-                        file_name=f"Tirupati_Invoice_{row['invoice_no'].replace('/', '_')}.html",
-                        mime="text/html",
-                        key=f"dl_{row['invoice_no']}",
-                        use_container_width=True,
-                        type="primary"
-                    )
-                except Exception as e:
-                    st.warning(f"Template error: Ensure 'invoice_template.html' exists in the directory.")
+                    # Setup Jinja2 Template Download
+                    env = Environment(loader=FileSystemLoader('.'))
+                    try:
+                        template = env.get_template('invoice_template.html')
+                        items_list = items_df.to_dict('records')
+                        html_content = template.render(
+                            invoice_no=row['invoice_no'],
+                            customer_name=row['customer_name'] if row['customer_name'] else "Cash Customer",
+                            vehicle_no=row['vehicle_no'] if row['vehicle_no'] else "N/A",
+                            date=row['date'],
+                            items=items_list,
+                            subtotal=row['subtotal'],
+                            cgst=row['cgst'],
+                            sgst=row['sgst'],
+                            total_amt=row['total']
+                        )
+                        
+                        st.download_button(
+                            label="⬇️ Download HTML Invoice",
+                            data=html_content,
+                            file_name=f"Tirupati_Invoice_{row['invoice_no'].replace('/', '_')}.html",
+                            mime="text/html",
+                            key=f"dl_{row['invoice_no']}",
+                            use_container_width=True,
+                            type="primary"
+                        )
+                    except Exception as e:
+                        st.warning(f"Template error: Ensure 'invoice_template.html' exists in the directory.")
 
-                if st.button("🗑️ Delete Invoice", key=f"del_inv_{row['invoice_no']}", use_container_width=True):
-                    conn = get_connection()
-                    c = conn.cursor()
-                    c.execute("DELETE FROM invoice_items WHERE invoice_no=?", (row["invoice_no"],))
-                    c.execute("DELETE FROM invoices WHERE invoice_no=?", (row["invoice_no"],))
-                    conn.commit()
-                    conn.close()
-                    st.toast(f"Deleted {row['invoice_no']}", icon="🗑️")
-                    st.rerun()
-
+                    if st.button("🗑️ Delete Invoice", key=f"del_inv_{row['invoice_no']}", use_container_width=True):
+                        conn = get_connection()
+                        c = conn.cursor()
+                        c.execute("DELETE FROM invoice_items WHERE invoice_no=?", (row["invoice_no"],))
+                        c.execute("DELETE FROM invoices WHERE invoice_no=?", (row["invoice_no"],))
+                        conn.commit()
+                        conn.close()
+                        
+                        st.session_state["viewing_invoice"] = None # Reset view state after deleting
+                        st.toast(f"Deleted {row['invoice_no']}", icon="🗑️")
+                        st.rerun()
+            st.markdown("---") # Visual separator beneath expanded view
 else:
     st.info("No invoices found. Start billing to see your history here.")
