@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Invoice - {{ invoice_no }}</title>
+    <style>
+        body {
+            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+            color: #333;
+            margin: 0;
+            padding: 20px;
+        }
+        .invoice-box {
+            max-width: 800px;
+            margin: auto;
+            padding: 30px;
+            border: 1px solid #eee;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.15);
+            background-color: #fff;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .header h1 {
+            color: #B22222;
+            margin: 0;
+            font-size: 32px;
+        }
+        .header p {
+            color: #777;
+            margin: 5px 0 0 0;
+        }
+        .info-table {
+            width: 100%;
+            margin-bottom: 30px;
+        }
+        .info-table td {
+            padding: 5px;
+            vertical-align: top;
+        }
+        .info-table .right {
+            text-align: right;
+        }
+        .items-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .items-table th, .items-table td {
+            padding: 12px;
+            border-bottom: 1px solid #ddd;
+            text-align: right;
+        }
+        .items-table th {
+            background-color: #f8f8f8;
+            font-weight: bold;
+        }
+        .items-table th:first-child, .items-table td:first-child {
+            text-align: left;
+        }
+        .total-row {
+            font-weight: bold;
+        }
+        .footer {
+            margin-top: 40px;
+            text-align: center;
+            color: #777;
+            font-style: italic;
+            border-top: 1px solid #eee;
+            padding-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="invoice-box">
+        <div class="header">
+            <h1>TIRUPATI PETROLEUM</h1>
+            <p>TAX INVOICE / CASH MEMO</p>
+        </div>
+
+        <table class="info-table">
+            <tr>
+                <td>
+                    <b>Bill To:</b> {{ customer_name }}<br>
+                    <b>Vehicle No:</b> {{ vehicle_no }}
+                </td>
+                <td class="right">
+                    <b>Invoice No:</b> {{ invoice_no }}<br>
+                    <b>Date:</b> {{ date }}
+                </td>
+            </tr>
+        </table>
+
+        <table class="items-table">
+            <tr>
+                <th>Product</th>
+                <th>Volume/Qty</th>
+                <th>Rate (₹)</th>
+                <th>Total (₹)</th>
+            </tr>
+            {% for item in items %}
+            <tr>
+                <td>{{ item.product if item.product else item.Product }}</td>
+                <td>{{ "%.2f"|format(item.quantity if item.quantity else item.Quantity) }}</td>
+                <td>₹ {{ "%.2f"|format(item.rate if item.rate else item.Rate) }}</td>
+                <td>₹ {{ "%.2f"|format(item.total if item.total else item.Total) }}</td>
+            </tr>
+            {% endfor %}
+            <tr>
+                <td colspan="2"></td>
+                <td>Subtotal</td>
+                <td>₹ {{ "%.2f"|format(subtotal) }}</td>
+            </tr>
+            <tr>
+                <td colspan="2"></td>
+                <td>CGST (9%)</td>
+                <td>₹ {{ "%.2f"|format(cgst) }}</td>
+            </tr>
+            <tr>
+                <td colspan="2"></td>
+                <td>SGST (9%)</td>
+                <td>₹ {{ "%.2f"|format(sgst) }}</td>
+            </tr>
+            <tr class="total-row">
+                <td colspan="2"></td>
+                <td>GRAND TOTAL</td>
+                <td>₹ {{ "%.2f"|format(total_amt) }}</td>
+            </tr>
+        </table>
+
+        <div class="footer">
+            Drive Safe! Thank you for visiting Tirupati Petroleum.
+        </div>
+    </div>
+</body>
+</html>
