@@ -3,6 +3,8 @@ import pandas as pd
 import sqlite3
 from datetime import datetime
 from jinja2 import Environment, FileSystemLoader
+from io import BytesIO
+from xhtml2pdf import pisa
 
 st.set_page_config(layout="wide", page_title="Tirupati Petroleum Billing", page_icon="⛽")
 st.title("⛽ Tirupati Petroleum - Billing System")
@@ -16,7 +18,6 @@ if "invoice_items" not in st.session_state:
 if "invoice_no" not in st.session_state:
     st.session_state["invoice_no"] = None
 
-# Default rates (can be updated in sidebar)
 if "petrol_rate" not in st.session_state:
     st.session_state["petrol_rate"] = 106.00
 if "diesel_rate" not in st.session_state:
@@ -26,8 +27,6 @@ if "diesel_rate" not in st.session_state:
 # SIDEBAR: MANAGE FUEL RATES
 # ==============================
 st.sidebar.header("📈 Today's Fuel Rates")
-st.sidebar.markdown("Update the rates below. They will automatically apply to new billing items.")
-
 new_petrol = st.sidebar.number_input("Petrol Rate (₹/L)", value=st.session_state["petrol_rate"], format="%.2f", step=0.10)
 new_diesel = st.sidebar.number_input("Diesel Rate (₹/L)", value=st.session_state["diesel_rate"], format="%.2f", step=0.10)
 
@@ -102,6 +101,32 @@ def generate_invoice_number():
 
 if st.session_state["invoice_no"] is None:
     st.session_state["invoice_no"] = generate_invoice_number()
+
+# ==============================
+# PDF GENERATOR FUNCTION
+# ==============================
+# Caching this makes the app run fast even with 50+ invoices
+@st.cache_data
+def generate_pdf_from_html(row, items_list):
+    env = Environment(loader=FileSystemLoader('.'))
+    template = env.get_template('invoice_template.html')
+
+    html_content = template.render(
+        invoice_no=row['invoice_no'],
+        customer_name=row['customer_name'] if row['customer_name'] else "Cash Customer",
+        vehicle_no=row['vehicle_no'] if row['vehicle_no'] else "N/A",
+        date=row['date'],
+        items=items_list,
+        subtotal=row['subtotal'],
+        cgst=row['cgst'],
+        sgst=row['sgst'],
+        total_amt=row['total']
+    )
+
+    pdf_buffer = BytesIO()
+    pisa.CreatePDF(BytesIO(html_content.encode("utf-8")), dest=pdf_buffer)
+    pdf_buffer.seek(0)
+    return pdf_buffer.getvalue()
 
 
 # ==============================
@@ -245,54 +270,43 @@ if not history.empty:
 
     for index, row in history.iterrows():
 
-        col1, col2, col3, col4, col5, col6 = st.columns([1.5, 2, 1.5, 1.5, 1.5, 1])
+        # Setup 7 columns to accommodate the three buttons
+        col1, col2, col3, col4, col5, col6, col7 = st.columns([1.5, 1.5, 1.5, 1, 1, 1.5, 1])
 
         col1.write(f"**{row['invoice_no']}**")
         col2.write(row["customer_name"])
         col3.write(row["vehicle_no"] if row["vehicle_no"] else "-")
         col4.write(f"**₹ {row['total']:.2f}**")
 
-        # ================= VIEW & DOWNLOAD HTML =================
-        if col5.button("Download HTML", key=f"view_{row['invoice_no']}"):
-
+        # ================= BUTTON 1: VIEW =================
+        if col5.button("👁️ View", key=f"view_{row['invoice_no']}"):
             conn = get_connection()
             items_df = pd.read_sql_query(
-                "SELECT * FROM invoice_items WHERE invoice_no=?",
+                "SELECT product, quantity, rate, total FROM invoice_items WHERE invoice_no=?",
                 conn, params=(row["invoice_no"],)
             )
             conn.close()
+            
+            st.markdown(f"**Viewing Items for {row['invoice_no']}**")
+            st.dataframe(items_df, use_container_width=True)
 
-            # 1. Setup Jinja2 to read from the current folder
-            env = Environment(loader=FileSystemLoader('.'))
-            template = env.get_template('invoice_template.html')
+        # ================= BUTTON 2: DOWNLOAD PDF =================
+        conn = get_connection()
+        items_df = pd.read_sql_query("SELECT * FROM invoice_items WHERE invoice_no=?", conn, params=(row["invoice_no"],))
+        conn.close()
+        
+        pdf_bytes = generate_pdf_from_html(row, items_df.to_dict('records'))
 
-            # 2. Convert dataframe items to a list of dictionaries for HTML
-            items_list = items_df.to_dict('records')
+        col6.download_button(
+            label="⬇️ PDF",
+            data=pdf_bytes,
+            file_name=f"Tirupati_Invoice_{row['invoice_no'].replace('/', '_')}.pdf",
+            mime="application/pdf",
+            key=f"dl_{row['invoice_no']}"
+        )
 
-            # 3. Render the HTML string by passing Python variables into the template
-            html_content = template.render(
-                invoice_no=row['invoice_no'],
-                customer_name=row['customer_name'] if row['customer_name'] else "Cash Customer",
-                vehicle_no=row['vehicle_no'] if row['vehicle_no'] else "N/A",
-                date=row['date'],
-                items=items_list,
-                subtotal=row['subtotal'],
-                cgst=row['cgst'],
-                sgst=row['sgst'],
-                total_amt=row['total']
-            )
-
-            # 4. Create a download button for the HTML file
-            st.download_button(
-                label="⬇️ Save Invoice",
-                data=html_content,
-                file_name=f"Tirupati_Invoice_{row['invoice_no'].replace('/', '_')}.html",
-                mime="text/html",
-                key=f"dl_{row['invoice_no']}"
-            )
-
-        # ================= DELETE BUTTON =================
-        if col6.button("Delete", key=f"delete_invoice_{row['invoice_no']}"):
+        # ================= BUTTON 3: DELETE =================
+        if col7.button("❌ Delete", key=f"delete_invoice_{row['invoice_no']}"):
             conn = get_connection()
             c = conn.cursor()
             c.execute("DELETE FROM invoice_items WHERE invoice_no=?", (row["invoice_no"],))
