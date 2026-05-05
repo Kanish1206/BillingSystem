@@ -3,15 +3,6 @@ import pandas as pd
 import sqlite3
 from datetime import datetime
 from jinja2 import Environment, FileSystemLoader
-from io import BytesIO
-
-# ReportLab imports for the professional PDF
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
-from reportlab.lib import colors
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.units import inch
-from reportlab.lib.pagesizes import A4
-from reportlab.lib.enums import TA_CENTER, TA_RIGHT
 
 st.set_page_config(layout="wide", page_title="Tirupati Petroleum Billing", page_icon="⛽")
 st.title("⛽ Tirupati Petroleum - Billing System")
@@ -112,43 +103,50 @@ def generate_invoice_number():
 if st.session_state["invoice_no"] is None:
     st.session_state["invoice_no"] = generate_invoice_number()
 
-if col5.button("Download HTML", key=f"view_{row['invoice_no']}"):
 
-            conn = get_connection()
-            items_df = pd.read_sql_query(
-                "SELECT * FROM invoice_items WHERE invoice_no=?",
-                conn, params=(row["invoice_no"],)
-            )
-            conn.close()
+# ==============================
+# CUSTOMER DETAILS
+# ==============================
+st.subheader("📝 Customer & Vehicle Details")
 
-            # 1. Setup Jinja2 to read from the current folder
-            env = Environment(loader=FileSystemLoader('.'))
-            template = env.get_template('invoice_template.html')
+col1, col2 = st.columns(2)
 
-            # 2. Convert dataframe items to a list of dictionaries for HTML
-            items_list = items_df.to_dict('records')
+with col1:
+    customer_name = st.text_input("Customer Name", placeholder="e.g. Rahul Sharma or 'Cash'")
+    phone = st.text_input("Phone Number")
 
-            # 3. Render the HTML string by passing Python variables into the template
-            html_content = template.render(
-                invoice_no=row['invoice_no'],
-                customer_name=row['customer_name'] if row['customer_name'] else "Cash Customer",
-                vehicle_no=row['vehicle_no'] if row['vehicle_no'] else "N/A",
-                date=row['date'],
-                items=items_list,
-                subtotal=row['subtotal'],
-                cgst=row['cgst'],
-                sgst=row['sgst'],
-                total_amt=row['total']
-            )
+with col2:
+    vehicle_no = st.text_input("Vehicle Number", placeholder="e.g. MH 12 AB 1234")
+    invoice_date = st.date_input("Invoice Date", datetime.today())
 
-            # 4. Create a download button for the HTML file
-            st.download_button(
-                label="⬇️ Download Invoice (HTML)",
-                data=html_content,
-                file_name=f"Tirupati_Invoice_{row['invoice_no'].replace('/', '_')}.html",
-                mime="text/html",
-                key=f"dl_{row['invoice_no']}"
-            )
+# ==============================
+# ADD ITEM
+# ==============================
+st.markdown("---")
+st.subheader("⛽ Add Fuel / Products")
+
+col1, col2, col3, col4 = st.columns([2, 1.5, 1.5, 1])
+
+product = col1.selectbox("Product", ["Petrol", "Diesel", "Engine Oil", "Coolant", "Other"])
+
+if product == "Petrol":
+    auto_rate = st.session_state["petrol_rate"]
+elif product == "Diesel":
+    auto_rate = st.session_state["diesel_rate"]
+else:
+    auto_rate = 0.0
+
+qty = col2.number_input("Volume/Qty (Liters/Nos)", min_value=0.01, value=1.00, step=0.50, format="%.2f")
+rate = col3.number_input("Rate (₹)", value=float(auto_rate), min_value=0.0, format="%.2f")
+
+if col4.button("➕ Add to Bill", use_container_width=True):
+    st.session_state["invoice_items"].append({
+        "Product": product,
+        "Quantity": qty,
+        "Rate": rate,
+        "Total": qty * rate
+    })
+    st.rerun()
 
 # ==============================
 # DISPLAY ITEMS & BILLING
@@ -247,15 +245,15 @@ if not history.empty:
 
     for index, row in history.iterrows():
 
-        col1, col2, col3, col4, col5, col6 = st.columns([1.5, 2, 1.5, 1.5, 1, 1])
+        col1, col2, col3, col4, col5, col6 = st.columns([1.5, 2, 1.5, 1.5, 1.5, 1])
 
         col1.write(f"**{row['invoice_no']}**")
         col2.write(row["customer_name"])
         col3.write(row["vehicle_no"] if row["vehicle_no"] else "-")
         col4.write(f"**₹ {row['total']:.2f}**")
 
-        # ================= VIEW & PRINT =================
-        if col5.button("PDF", key=f"view_{row['invoice_no']}"):
+        # ================= VIEW & DOWNLOAD HTML =================
+        if col5.button("Download HTML", key=f"view_{row['invoice_no']}"):
 
             conn = get_connection()
             items_df = pd.read_sql_query(
@@ -264,24 +262,32 @@ if not history.empty:
             )
             conn.close()
 
-            # Generate the professional Tirupati PDF
-            pdf_buffer = create_tirupati_invoice(
+            # 1. Setup Jinja2 to read from the current folder
+            env = Environment(loader=FileSystemLoader('.'))
+            template = env.get_template('invoice_template.html')
+
+            # 2. Convert dataframe items to a list of dictionaries for HTML
+            items_list = items_df.to_dict('records')
+
+            # 3. Render the HTML string by passing Python variables into the template
+            html_content = template.render(
                 invoice_no=row['invoice_no'],
-                customer_name=row['customer_name'],
-                vehicle_no=row['vehicle_no'],
+                customer_name=row['customer_name'] if row['customer_name'] else "Cash Customer",
+                vehicle_no=row['vehicle_no'] if row['vehicle_no'] else "N/A",
                 date=row['date'],
-                items_df=items_df,
-                total_amt=row['total'],
+                items=items_list,
                 subtotal=row['subtotal'],
                 cgst=row['cgst'],
-                sgst=row['sgst']
+                sgst=row['sgst'],
+                total_amt=row['total']
             )
 
+            # 4. Create a download button for the HTML file
             st.download_button(
-                label="⬇️ Download",
-                data=pdf_buffer,
-                file_name=f"Tirupati_Invoice_{row['invoice_no'].replace('/', '_')}.pdf",
-                mime="application/pdf",
+                label="⬇️ Save Invoice",
+                data=html_content,
+                file_name=f"Tirupati_Invoice_{row['invoice_no'].replace('/', '_')}.html",
+                mime="text/html",
                 key=f"dl_{row['invoice_no']}"
             )
 
