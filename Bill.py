@@ -2,14 +2,18 @@ import streamlit as st
 import pandas as pd
 import sqlite3
 from datetime import datetime
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
-from reportlab.lib import colors
-from reportlab.lib.styles import getSampleStyleSheet
-from reportlab.lib.units import inch
 from io import BytesIO
 
-st.set_page_config(layout="wide", page_title="Fuel Station Billing", page_icon="⛽")
-st.title("⛽ Fast-Track Fuel Station Billing")
+# ReportLab imports for the professional PDF
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
+from reportlab.lib import colors
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import inch
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.enums import TA_CENTER, TA_RIGHT
+
+st.set_page_config(layout="wide", page_title="Tirupati Petroleum Billing", page_icon="⛽")
+st.title("⛽ Tirupati Petroleum - Billing System")
 
 # ==============================
 # SESSION INITIALIZATION & RATES
@@ -43,7 +47,7 @@ if st.sidebar.button("Update Rates"):
 # ==============================
 # DATABASE SETUP
 # ==============================
-DB_FILE = "fuel_database.db" # Changed db name for the fresh schema
+DB_FILE = "fuel_database.db"
 
 def get_connection():
     return sqlite3.connect(DB_FILE, check_same_thread=False)
@@ -84,7 +88,7 @@ def init_db():
 init_db()
 
 # ==============================
-# GENERATE INVOICE NUMBER (FIXED)
+# GENERATE INVOICE NUMBER
 # ==============================
 def generate_invoice_number():
     conn = get_connection()
@@ -97,7 +101,6 @@ def generate_invoice_number():
     else:
         fy = f"{year}-{str(year+1)[-2:]}"
 
-    # Use MAX(id) to prevent collisions if invoices are deleted
     c.execute("SELECT MAX(id) FROM invoices")
     result = c.fetchone()[0]
     serial = (result if result else 0) + 1
@@ -107,6 +110,92 @@ def generate_invoice_number():
 
 if st.session_state["invoice_no"] is None:
     st.session_state["invoice_no"] = generate_invoice_number()
+
+# ==============================
+# TIRUPATI PDF TEMPLATE GENERATOR
+# ==============================
+def create_tirupati_invoice(invoice_no, customer_name, vehicle_no, date, items_df, total_amt, subtotal=None, cgst=None, sgst=None):
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=40, leftMargin=40, topMargin=40, bottomMargin=40)
+    elements = []
+    styles = getSampleStyleSheet()
+
+    # --- CUSTOM STYLES ---
+    title_style = ParagraphStyle(
+        'Title', parent=styles['Heading1'], alignment=TA_CENTER, 
+        fontSize=24, textColor=colors.HexColor("#B22222"), spaceAfter=5, fontName="Helvetica-Bold"
+    )
+    subtitle_style = ParagraphStyle(
+        'Subtitle', parent=styles['Normal'], alignment=TA_CENTER, 
+        fontSize=10, textColor=colors.dimgrey, spaceAfter=20
+    )
+    info_style = ParagraphStyle('Info', parent=styles['Normal'], fontSize=11, spaceAfter=6)
+    
+    # --- HEADER ---
+    elements.append(Paragraph("TIRUPATI PETROLEUM", title_style))
+    elements.append(Paragraph("TAX INVOICE / CASH MEMO", subtitle_style))
+    elements.append(HRFlowable(width="100%", thickness=1, color=colors.black, spaceBefore=0, spaceAfter=15))
+
+    # --- CUSTOMER & INVOICE DETAILS ---
+    cust_veh = vehicle_no if vehicle_no else "N/A"
+    cust_name = customer_name if customer_name else "Cash Customer"
+    
+    info_data = [
+        [Paragraph(f"<b>Bill To:</b> {cust_name}", info_style), Paragraph(f"<b>Invoice No:</b> {invoice_no}", info_style)],
+        [Paragraph(f"<b>Vehicle No:</b> {cust_veh}", info_style), Paragraph(f"<b>Date:</b> {date}", info_style)]
+    ]
+    info_table = Table(info_data, colWidths=[doc.width/2.0]*2)
+    info_table.setStyle(TableStyle([
+        ('ALIGN', (0,0), (0,-1), 'LEFT'),
+        ('ALIGN', (1,0), (1,-1), 'RIGHT'),
+        ('VALIGN', (0,0), (-1,-1), 'TOP'),
+    ]))
+    elements.append(info_table)
+    elements.append(Spacer(1, 0.3 * inch))
+
+    # --- ITEM TABLE ---
+    table_data = [["Product", "Volume/Qty", "Rate (₹)", "Total (₹)"]]
+    
+    for _, item in items_df.iterrows():
+        # .get() safely handles both uppercase (from session state) and lowercase (from DB)
+        table_data.append([
+            item.get("product", item.get("Product", "")),
+            f"{item.get('quantity', item.get('Quantity', 0)):.2f}",
+            f"{item.get('rate', item.get('Rate', 0)):.2f}",
+            f"{item.get('total', item.get('Total', 0)):.2f}"
+        ])
+
+    if subtotal is not None and cgst is not None and sgst is not None:
+        table_data.append(["", "", "Subtotal", f"{subtotal:.2f}"])
+        table_data.append(["", "", "CGST (9%)", f"{cgst:.2f}"])
+        table_data.append(["", "", "SGST (9%)", f"{sgst:.2f}"])
+    
+    table_data.append(["", "", "GRAND TOTAL", f"{total_amt:.2f}"])
+
+    item_table = Table(table_data, colWidths=[doc.width*0.4, doc.width*0.2, doc.width*0.2, doc.width*0.2])
+    item_table.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#f2f2f2")),
+        ('TEXTCOLOR', (0,0), (-1,0), colors.black),
+        ('ALIGN', (0,0), (0,-1), 'LEFT'),       
+        ('ALIGN', (1,0), (-1,-1), 'RIGHT'),     
+        ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+        ('FONTNAME', (2,-1), (3,-1), 'Helvetica-Bold'), 
+        ('BOTTOMPADDING', (0,0), (-1,0), 10),
+        ('TOPPADDING', (0,0), (-1,0), 10),
+        ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
+    ]))
+    
+    elements.append(item_table)
+    elements.append(Spacer(1, 0.5 * inch))
+
+    # --- FOOTER ---
+    elements.append(HRFlowable(width="100%", thickness=0.5, color=colors.grey, spaceBefore=10, spaceAfter=10))
+    footer_style = ParagraphStyle('Footer', parent=styles['Normal'], alignment=TA_CENTER, fontSize=10, fontName="Helvetica-Oblique")
+    elements.append(Paragraph("Drive Safe! Thank you for visiting Tirupati Petroleum.", footer_style))
+
+    doc.build(elements)
+    buffer.seek(0)
+    return buffer
 
 # ==============================
 # CUSTOMER DETAILS
@@ -124,17 +213,15 @@ with col2:
     invoice_date = st.date_input("Invoice Date", datetime.today())
 
 # ==============================
-# ADD ITEM (DYNAMIC RATES)
+# ADD ITEM
 # ==============================
 st.markdown("---")
 st.subheader("⛽ Add Fuel / Products")
 
-# Not using st.form here so the rate updates instantly when the dropdown changes
 col1, col2, col3, col4 = st.columns([2, 1.5, 1.5, 1])
 
 product = col1.selectbox("Product", ["Petrol", "Diesel", "Engine Oil", "Coolant", "Other"])
 
-# Auto-fetch rates based on selection
 if product == "Petrol":
     auto_rate = st.session_state["petrol_rate"]
 elif product == "Diesel":
@@ -177,8 +264,6 @@ if len(items) > 0:
     df = pd.DataFrame(items)
     subtotal = df["Total"].sum()
     
-    # NOTE: Fuel is often exempt from standard GST or has different tax brackets. 
-    # Adjust this 9% logic based on your exact local tax laws for petroleum.
     cgst = subtotal * 0.09
     sgst = subtotal * 0.09
     total = subtotal + cgst + sgst
@@ -190,14 +275,13 @@ if len(items) > 0:
     st.subheader(f"Grand Total: ₹ {total:.2f}")
 
     # ==========================
-    # SAVE INVOICE (FIXED)
+    # SAVE INVOICE
     # ==========================
     col_save, col_clear = st.columns(2)
     
     with col_save:
         if st.button("💾 Save Invoice", use_container_width=True):
             if not customer_name.strip():
-                # For fuel stations, sometimes they don't give a name. Defaulting to 'Cash Customer' if empty
                 customer_name = "Cash Customer"
                 
             conn = get_connection()
@@ -226,7 +310,6 @@ if len(items) > 0:
                 conn.commit()
                 st.success(f"Invoice {st.session_state['invoice_no']} Saved Successfully!")
                 
-                # Clear state immediately to prevent duplicate saves
                 st.session_state["invoice_items"] = []
                 st.session_state["invoice_no"] = generate_invoice_number()
                 st.rerun()
@@ -266,50 +349,29 @@ if not history.empty:
         if col5.button("PDF", key=f"view_{row['invoice_no']}"):
 
             conn = get_connection()
-            items = pd.read_sql_query(
+            items_df = pd.read_sql_query(
                 "SELECT * FROM invoice_items WHERE invoice_no=?",
                 conn, params=(row["invoice_no"],)
             )
             conn.close()
 
-            buffer = BytesIO()
-            doc = SimpleDocTemplate(buffer)
-            elements = []
-            styles = getSampleStyleSheet()
-
-            elements.append(Paragraph(f"Tax Invoice: {row['invoice_no']}", styles["Heading2"]))
-            elements.append(Paragraph(f"Customer: {row['customer_name']}", styles["Normal"]))
-            elements.append(Paragraph(f"Vehicle No: {row['vehicle_no']}", styles["Normal"]))
-            elements.append(Paragraph(f"Date: {row['date']}", styles["Normal"]))
-            elements.append(Spacer(1, 0.3 * inch))
-
-            table_data = [["Product", "Volume/Qty", "Rate", "Total"]]
-
-            for _, item in items.iterrows():
-                table_data.append([
-                    item["product"],
-                    f"{item['quantity']:.2f}",
-                    f"₹ {item['rate']:.2f}",
-                    f"₹ {item['total']:.2f}"
-                ])
-
-            table_data.append(["", "", "Grand Total", f"₹ {row['total']:.2f}"])
-
-            table = Table(table_data)
-            table.setStyle(TableStyle([
-                ("BACKGROUND", (0,0), (-1,0), colors.lightgrey),
-                ("GRID", (0,0), (-1,-1), 0.5, colors.grey),
-                ("ALIGN", (1,1), (-1,-1), "RIGHT"),
-            ]))
-
-            elements.append(table)
-            doc.build(elements)
-            buffer.seek(0)
+            # Generate the professional Tirupati PDF
+            pdf_buffer = create_tirupati_invoice(
+                invoice_no=row['invoice_no'],
+                customer_name=row['customer_name'],
+                vehicle_no=row['vehicle_no'],
+                date=row['date'],
+                items_df=items_df,
+                total_amt=row['total'],
+                subtotal=row['subtotal'],
+                cgst=row['cgst'],
+                sgst=row['sgst']
+            )
 
             st.download_button(
                 label="⬇️ Download",
-                data=buffer,
-                file_name=f"{row['invoice_no'].replace('/', '_')}.pdf",
+                data=pdf_buffer,
+                file_name=f"Tirupati_Invoice_{row['invoice_no'].replace('/', '_')}.pdf",
                 mime="application/pdf",
                 key=f"dl_{row['invoice_no']}"
             )
