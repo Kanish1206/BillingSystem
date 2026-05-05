@@ -3,3 +3,4 @@ pandas
 reportlab
 Jinja2
 xhtml2pdf
+pisa
